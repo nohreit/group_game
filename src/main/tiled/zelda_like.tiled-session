@@ -1,0 +1,58 @@
+{
+    "Map/SizeTest": {
+        "height": 4300,
+        "width": 2
+    },
+    "activeFile": "map.tmx",
+    "expandedProjectPaths": [
+        "vscode",
+        "."
+    ],
+    "fileStates": {
+        "/home/darkestsoul/vscode/solo_game/demo.tmx": {
+            "scale": 0.6568359375,
+            "selectedLayer": 1,
+            "viewCenter": {
+                "x": 639.42908117752,
+                "y": 640.1903062741599
+            }
+        },
+        "Terrain.tsj": {
+            "scaleInDock": 1,
+            "scaleInEditor": 1
+        },
+        "map.tmx": {
+            "scale": 0.6568359375,
+            "selectedLayer": 0,
+            "viewCenter": {
+                "x": 639.42908117752,
+                "y": 640.1903062741599
+            }
+        }
+    },
+    "last.exportedFilePath": "/home/darkestsoul/vscode/solo_game/src/main/resources/maps",
+    "last.imagePath": "/home/darkestsoul/vscode/solo_game/src/main/resources/tiles",
+    "lastUsedTilesetExportFilter": "JSON tileset files (*.tsj *.json)",
+    "map.height": 20,
+    "map.lastUsedExportFilter": "JSON map files (*.tmj *.json)",
+    "map.lastUsedFormat": "tmx",
+    "map.renderOrder": "2",
+    "map.tileHeight": 64,
+    "map.tileWidth": 64,
+    "map.width": 20,
+    "openFiles": [
+        "Terrain.tsj",
+        "map.tmx"
+    ],
+    "project": "zelda_like.tiled-project",
+    "recentFiles": [
+        "Terrain.tsj",
+        "map.tmx",
+        "/home/darkestsoul/vscode/solo_game/demo.tmx"
+    ],
+    "tileset.lastUsedFormat": "json",
+    "tileset.tileSize": {
+        "height": 16,
+        "width": 16
+    }
+}
