@@ -35,6 +35,8 @@ public class GamePanel extends JPanel implements Runnable {
     private final List<EnemyWarrior> enemies = new ArrayList<>();
     private final Object renderLock = new Object();
 
+    int TILE = 16;
+
     public enum GameState {
         PLAYING,
         GAME_OVER,
@@ -51,7 +53,7 @@ public class GamePanel extends JPanel implements Runnable {
 
     public void init() {
         backbuffer = new BufferedImage(vw, vh, BufferedImage.TYPE_INT_ARGB);
-        String mapResourcePath = "/main/assets/maps/demo.json";
+        String mapResourcePath = "/main/assets/maps/map0.json";
 
         g = backbuffer.createGraphics();
         g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
@@ -67,8 +69,8 @@ public class GamePanel extends JPanel implements Runnable {
 
         camera = new Camera(0, 0, vw, vh, map.getPixelWidth(), map.getPixelHeight());
 
-        spawnPlayerTile(5, 5);
-        spawnEnemies();
+        spawnPlayerTile(4, 8);
+//        spawnEnemies();
     }
 
     @Override
@@ -93,13 +95,12 @@ public class GamePanel extends JPanel implements Runnable {
 
     // Helper to spawn in tile coordinates.
     private void spawnPlayerTile(int tileX, int tileY) {
-        int TILE = 64; // use your actual tile size
-        String playerBase = "/main/assets/sprites/player/Black_Units/Warrior/";
+        String playerBase = "/main/assets/sprites/player/Main_Characters/Virtual_Guy/";
         player = new Player(tileX * TILE + TILE / 2f, tileY * TILE + TILE / 2f, playerBase);
     }
 
     private void spawnEnemyTile(int tileX, int tileY) {
-        int TILE = 64; // use your actual tile size
+
         String redBase = "/main/assets/sprites/player/Red_Units/Warrior/";
         enemies.add(new EnemyWarrior(tileX * TILE + TILE / 2f, tileY * TILE + TILE / 2f, redBase));
     }
@@ -139,27 +140,23 @@ public class GamePanel extends JPanel implements Runnable {
             return;
         }
 
-        // Movement (WASD / Arrow keys)
-        float speed = 120f; // pixels per second
-        float dx = 0, dy = 0;
-        boolean guarding = input.isGuard();
+        float dx = 0f, speed = 120f;
+        if (input.isLeft()) dx -= (float) (speed * dt);
+        if (input.isRight()) dx += (float) (speed * dt);
 
-        if (!guarding) {
-            if (input.isUp()) dy -= (float) (speed * dt);
-            if (input.isDown()) dy += (float) (speed * dt);
-            if (input.isLeft()) dx -= (float) (speed * dt);
-            if (input.isRight()) dx += (float) (speed * dt);
-        }
+        // Jump
+        boolean jumpPressed = input.isJumpPressed();   // edge: false->true this frame
+        boolean jumpReleased = input.isJumpReleased();  // edge: true->false this frame
 
         player.tick(dt);
-
-        player.move(map, dx, dy);
-
+        player.updatePlatformer(map, dx, jumpPressed, jumpReleased, (float) dt);
         camera.centerOn(player.x, player.y);
 
-        player.update(dx, dy, input.isAttack(), input.isGuard());
+//        player.update(dx, dy, input.isAttack(), input.isGuard());
 
-        if (player.isDead()) {
+        input.endFrame(); // Reset isJumpPressed()
+
+        /*if (player.isDead()) {
             state = GameState.GAME_OVER;
         }
 
@@ -235,13 +232,13 @@ public class GamePanel extends JPanel implements Runnable {
 
         if (player.isDead()) {
             state = GameState.GAME_OVER;
-        }
+        }*/
     }
 
     private void restart() {
         state = GameState.PLAYING;
-        spawnPlayerTile(5, 5);
-        spawnEnemies();
+        spawnPlayerTile(4, 8);
+//        spawnEnemies();
         camera.centerOn(player.x, player.y);
     }
 
@@ -297,8 +294,8 @@ public class GamePanel extends JPanel implements Runnable {
             // DEBUGGING
             if (DEBUG) {
                 graphicDebugging();
-                debugDrawAttackHitbox(g, camera);
-                player.debugDrawAttackHitbox(g, camera);
+//                debugDrawAttackHitbox(g, camera);
+//                player.debugDrawAttackHitbox(g, camera);
                 player.debugDrawCollision(g, camera);
 
                 for (EnemyWarrior e : enemies) {
@@ -327,7 +324,7 @@ public class GamePanel extends JPanel implements Runnable {
         // Logs for debugging
     }
 
-    public void debugDrawAttackHitbox(Graphics2D g, Camera cam) {
+/*    public void debugDrawAttackHitbox(Graphics2D g, Camera cam) {
         Rect hb = player.getAttackHitbox();
         if (hb == null) return;
 
@@ -336,6 +333,6 @@ public class GamePanel extends JPanel implements Runnable {
 
         g.setColor(new Color(255, 0, 0, 120));
         g.drawRect(sx, sy, hb.w, hb.h);
-    }
+    }*/
 
 }

@@ -6,7 +6,7 @@ import java.awt.event.KeyEvent;
 
 
 public class Input extends KeyAdapter {
-    private boolean up, down, left, right, attack, guard, restart;
+    private boolean up, down, left, right, attack, guard, restart, jumpDown, jumpPrev;
 
 
     @Override
@@ -29,6 +29,7 @@ public class Input extends KeyAdapter {
             case KeyEvent.VK_J -> attack = on;
             case KeyEvent.VK_K -> guard = on;
             case KeyEvent.VK_R -> restart = on;
+            case KeyEvent.VK_SPACE -> jumpDown = on;
         }
     }
 
@@ -60,4 +61,22 @@ public class Input extends KeyAdapter {
     public boolean isRestart() {
         return restart;
     }
+
+    public boolean isJumpHeld() {
+        return jumpDown;
+    }
+
+    public boolean isJumpPressed() {
+        return jumpDown && !jumpPrev;
+    }
+
+    public boolean isJumpReleased() {
+        return !jumpDown && jumpPrev;
+    }
+
+    public void endFrame() { // Tells Input when the jump frame ends
+        jumpPrev = jumpDown;
+    }
+
+
 }

@@ -13,14 +13,31 @@ import java.util.Objects;
 
 public class Player {
 
+    // --- Platformer physics ---
+    private float vx = 0f, vy = 0f;
+    private boolean onGround = false;
+
+    private static final float MOVE_SPEED = 90f;     // start value (tune)
+    private static final float GRAVITY = 520f;       // start value (tune)
+    private static final float JUMP_VEL = -220f;     // start value (tune)
+    private static final float MAX_FALL = 520f;
+
+    // Jump feel helpers (high impact, low code)
+    private float coyoteTimer = 0f; // Late jump forgiveness. Ever watched "Meep Meep" and Coyote from the Looney Tunes series?
+    private float jumpBufferTimer = 0f;
+    private static final float COYOTE_TIME = 0.08f;      // 80ms
+    private static final float JUMP_BUFFER = 0.10f;      // 100ms
+
+
     // World position in pixels (treated as center of the sprite)
     public float x;
     public float y;
 
     // Tunable collision box
-    private static final int COLLIDER_W = 16;
-    private static final int COLLIDER_H = 10;
-    private static final int FOOT_OFFSET_Y = 24; // feet-anchored collider for top-down sprites
+    private static final int COLLIDER_W = 12;
+    private static final int COLLIDER_H = 18;
+    private static final int COLLIDER_OFFSET_Y = 8; // pushes collider down inside sprite
+
 
     // --- Combat hitbox constants (pixels, world-space) ---
     private static final int HITBOX_W = 60;
@@ -58,14 +75,11 @@ public class Player {
     }
 
     // High-level animation state
-    private enum AnimationType {
-        IDLE, RUN, ATTACK, GUARD
-    }
+    private enum AnimationType {IDLE, RUN, JUMP, FALL, HIT}
+
 
     // Direction for idle/run
-    private enum MoveType {
-        UP, DOWN, LEFT, RIGHT, NONE
-    }
+    private enum MoveType {UP, DOWN, LEFT, RIGHT, NONE}
 
     // Attack phase
     private enum AttackPhase {
@@ -91,6 +105,8 @@ public class Player {
     private Animation attack2Animation;  // Attack 2 (combo)
     private Animation guardAnimation;
 
+    private Animation takeHitAnimation;
+
     private Animation currentAnimation;
 
     // Attack playback control
@@ -106,7 +122,7 @@ public class Player {
     private int comboWindowTicksRemaining = 0;
 
     // Base folder where the PLAYER warrior sprites live
-    // "/main/resources/sprites/player/Black_Units/Warrior/"
+    // "/main/resources/sprites/player/Main_Characters/Virtual_Guy/"
     private final String spriteBasePath;
 
     public Player(float x, float y, String spriteBasePath) {
@@ -120,19 +136,19 @@ public class Player {
     private void initAnimations() {
         try {
             BufferedImage idleSheet = ImageIO.read(Objects.requireNonNull(
-                    getClass().getResource(spriteBasePath + "Warrior_Idle.png"),
-                    "Missing sprite sheet: " + spriteBasePath + "Warrior_Idle.png"
+                    getClass().getResource(spriteBasePath + "Idle.png"),
+                    "Missing sprite sheet: " + spriteBasePath + "Idle.png"
             ));
 
             BufferedImage runSheet = ImageIO.read(Objects.requireNonNull(
-                    getClass().getResource(spriteBasePath + "Warrior_Run.png"),
-                    "Missing sprite sheet: " + spriteBasePath + "Warrior_Run.png"
+                    getClass().getResource(spriteBasePath + "Run.png"),
+                    "Missing sprite sheet: " + spriteBasePath + "Run.png"
             ));
 
-            int frameWidth = 192;
-            int frameHeight = 192;
-            int idleFramesCount = 8;
-            int runFramesCount = 6;
+            int frameWidth = 32;
+            int frameHeight = 32;
+            int idleFramesCount = 11;
+            int runFramesCount = 12;
 
 
             // Slice idle
@@ -161,9 +177,11 @@ public class Player {
 
 
             // Load attack and guard animations
-            attackAnimation = loadAnimation(spriteBasePath + "Warrior_Attack1.png", 4, 6);
-            attack2Animation = loadAnimation(spriteBasePath + "Warrior_Attack2.png", 4, 6);
-            guardAnimation = loadAnimation(spriteBasePath + "Warrior_Guard.png", 6, 10);
+//            attackAnimation = loadAnimation(spriteBasePath + "Warrior_Attack1.png", 4, 6);
+//            attack2Animation = loadAnimation(spriteBasePath + "Warrior_Attack2.png", 4, 6);
+//            guardAnimation = loadAnimation(spriteBasePath + "Warrior_Guard.png", 6, 10);
+
+            takeHitAnimation = loadAnimation(spriteBasePath + "Hit.png", 7, 7);
 
 
             // Pre-compute attack durations in ticks (frames * frameDelay)
@@ -264,9 +282,9 @@ public class Player {
     }
 
     private float getColY() {
-        // place the box near the feet, not at the center
-        return y + FOOT_OFFSET_Y - COLLIDER_H;
+        return y - COLLIDER_H / 2f + COLLIDER_OFFSET_Y;
     }
+
 
     // Axis-by-axis movement with collider resolution
     public void move(TiledMap map, float dx, float dy) {
@@ -308,18 +326,18 @@ public class Player {
             float newY = y + dy;
 
             float colX = getColX(); // uses current x
-            float colY = newY + FOOT_OFFSET_Y - COLLIDER_H; // same logic as getColY() but with newY
+            float colY = newY + COLLIDER_OFFSET_Y - COLLIDER_H; // same logic as getColY() but with newY
 
             for (Rect r : map.colliders) {
                 if (r.intersects(colX, colY, COLLIDER_W, COLLIDER_H)) {
                     if (dy > 0) {
                         // moving down → feet hit top of cliff
-                        newY = r.y - FOOT_OFFSET_Y;
+                        newY = r.y - COLLIDER_OFFSET_Y;
                     } else if (dy < 0) {
                         // moving up → head hits something above (rare on cliffs)
-                        newY = r.y + r.h - FOOT_OFFSET_Y + COLLIDER_H;
+                        newY = r.y + r.h - COLLIDER_OFFSET_Y + COLLIDER_H;
                     }
-                    colY = newY + FOOT_OFFSET_Y - COLLIDER_H;
+                    colY = newY + COLLIDER_OFFSET_Y - COLLIDER_H;
                 }
             }
 
@@ -327,7 +345,51 @@ public class Player {
         }
     }
 
-    public void update(float dx, float dy, boolean attackPressed, boolean guardPressed) {
+    private void moveAndCollide(TiledMap map, float dx, float dy) {
+        // Horizontal
+        if (dx != 0) {
+            float newX = x + dx;
+            float colX = newX - COLLIDER_W / 2f;
+            float colY = getColY();
+
+            for (Rect r : map.colliders) {
+                if (r.intersects(colX, colY, COLLIDER_W, COLLIDER_H)) {
+                    if (dx > 0) newX = r.x - COLLIDER_W / 2f;
+                    else newX = r.x + r.w + COLLIDER_W / 2f;
+                    colX = newX - COLLIDER_W / 2f;
+                }
+            }
+            x = newX;
+        }
+
+        // Vertical
+        onGround = false; // will become true if we land this frame
+        if (dy != 0) {
+            float newY = y + dy;
+            float colX = getColX();
+            float colY = newY - COLLIDER_H / 2f + COLLIDER_OFFSET_Y;
+
+            for (Rect r : map.colliders) {
+                if (r.intersects(colX, colY, COLLIDER_W, COLLIDER_H)) {
+                    if (dy > 0) {
+                        // falling -> land on top
+                        newY = r.y - (COLLIDER_OFFSET_Y) - (COLLIDER_H / 2f);
+                        vy = 0f;
+                        onGround = true;
+                    } else {
+                        // going up -> bonk
+                        newY = r.y + r.h - (COLLIDER_OFFSET_Y) + (COLLIDER_H / 2f);
+                        vy = 0f;
+                    }
+                    colY = newY - COLLIDER_H / 2f + COLLIDER_OFFSET_Y;
+                }
+            }
+            y = newY;
+        }
+    }
+
+
+    /*public void update(float dx, float dy, boolean attackPressed, boolean guardPressed) {
         if (dead) {
             // optionally play a death animation, or just idle
             // setAnimation(AnimationType.IDLE, currentMoveType);
@@ -352,13 +414,13 @@ public class Player {
             comboWindowTicksRemaining = 0;
 
             // Guard animation
-            if (!attackPlaying && guardAnimation != null) {
-                animType = AnimationType.GUARD;
-                setAnimation(animType, moveType);
-                if (currentAnimation != null) currentAnimation.update();
-                lastAttackPressed = attackPressed;
-                return; // stop here so nothing overrides guard
-            }
+//            if (!attackPlaying && guardAnimation != null) {
+//                animType = AnimationType.GUARD;
+//                setAnimation(animType, moveType);
+//                if (currentAnimation != null) currentAnimation.update();
+//                lastAttackPressed = attackPressed;
+//                return; // stop here so nothing overrides guard
+//            }
             // If an attack is currently playing, attack will continue (attack has priority)
         }
 
@@ -453,9 +515,45 @@ public class Player {
 
         // Remember previous attack state for edge detection
         lastAttackPressed = attackPressed;
+    }*/
+
+    public void updatePlatformer(TiledMap map, float dx, boolean jumpPressed, boolean jumpReleased, float dt) {
+        // timers
+        if (coyoteTimer > 0) coyoteTimer -= dt;
+        if (jumpBufferTimer > 0) jumpBufferTimer -= dt;
+
+        // buffer jump press
+        if (jumpPressed) jumpBufferTimer = JUMP_BUFFER;
+
+        // horizontal velocity (simple)
+        vx = dx * MOVE_SPEED;
+
+        // gravity
+        vy += GRAVITY * dt;
+        if (vy > MAX_FALL) vy = MAX_FALL;
+
+        // coyote: refresh when grounded
+        if (onGround) coyoteTimer = COYOTE_TIME;
+
+        // perform jump if buffered + allowed
+        if (jumpBufferTimer > 0f && coyoteTimer > 0f) {
+            vy = JUMP_VEL;
+            onGround = false;
+            coyoteTimer = 0f;
+            jumpBufferTimer = 0f;
+        }
+
+        // variable jump height (cut jump)
+        if (jumpReleased && vy < 0f) {
+            vy *= 0.45f;
+        }
+
+        // move + collide
+        moveAndCollide(map, vx * dt, vy * dt);
     }
 
-    public int getAttackId() {
+
+    /*public int getAttackId() {
         return attackId;
     }
 
@@ -492,12 +590,12 @@ public class Player {
                 : (int) (colX + COLLIDER_W + HITBOX_X_OFFSET);
 
         return new Rect(hbX, hbY, HITBOX_W, HITBOX_H);
-    }
+    }*/
 
 
     // Helper to choose animation based on {AnimationType, MoveType}
     private Animation getAnimation(AnimationType type, MoveType move) {
-        // Attack / guard ignore direction for now. We just flip with facingLeft
+/*        // Attack / guard ignore direction for now. We just flip with facingLeft
         if (type == AnimationType.ATTACK) {
             if (attackPhase == AttackPhase.ATTACK2 && attack2Animation != null) {
                 return attack2Animation;
@@ -506,7 +604,7 @@ public class Player {
         }
         if (type == AnimationType.GUARD) {
             return (guardAnimation != null) ? guardAnimation : idleDownAnim;
-        }
+        }*/
 
         if (type == AnimationType.IDLE) {
             return switch (move) {
@@ -634,7 +732,7 @@ public class Player {
         g.drawRect(sx, sy, COLLIDER_W, COLLIDER_H);
     }
 
-    public void debugDrawAttackHitbox(Graphics2D g, Camera cam) {
+/*    public void debugDrawAttackHitbox(Graphics2D g, Camera cam) {
         Rect hb = getAttackHitbox();
         if (hb == null) return;
 
@@ -643,5 +741,5 @@ public class Player {
 
         g.setColor(new Color(255, 0, 0, 150));
         g.drawRect(sx, sy, hb.w, hb.h);
-    }
+    }*/
 }
