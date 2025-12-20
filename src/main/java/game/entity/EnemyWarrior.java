@@ -3,6 +3,7 @@ package main.java.game.entity;
 import main.java.game.gfx.Animation;
 import main.java.game.gfx.Camera;
 import main.java.game.map.TiledMap;
+import main.java.game.physics.Collider;
 import main.java.game.physics.Rect;
 
 import javax.imageio.ImageIO;
@@ -189,10 +190,10 @@ public class EnemyWarrior {
             float colX = newX - COLLIDER_W / 2f;
             float colY = getColY();
 
-            for (Rect r : map.colliders) {
-                if (r.intersects(colX, colY, COLLIDER_W, COLLIDER_H)) {
-                    if (dx > 0) newX = r.x - COLLIDER_W / 2f;
-                    else newX = r.x + r.w + COLLIDER_W / 2f;
+            for (Collider c : map.colliders) {
+                if (c.rect.intersects(colX, colY, COLLIDER_W, COLLIDER_H)) {
+                    if (dx > 0) newX = c.rect.x - COLLIDER_W / 2f;
+                    else newX = c.rect.x + c.rect.w + COLLIDER_W / 2f;
                     colX = newX - COLLIDER_W / 2f;
                 }
             }
@@ -204,10 +205,10 @@ public class EnemyWarrior {
             float colX = getColX();
             float colY = newY + FOOT_OFFSET_Y - COLLIDER_H;
 
-            for (Rect r : map.colliders) {
-                if (r.intersects(colX, colY, COLLIDER_W, COLLIDER_H)) {
-                    if (dy > 0) newY = r.y - FOOT_OFFSET_Y;
-                    else newY = r.y + r.h - FOOT_OFFSET_Y + COLLIDER_H;
+            for (Collider c : map.colliders) {
+                if (c.rect.intersects(colX, colY, COLLIDER_W, COLLIDER_H)) {
+                    if (dy > 0) newY = c.rect.y - FOOT_OFFSET_Y;
+                    else newY = c.rect.y + c.rect.h - FOOT_OFFSET_Y + COLLIDER_H;
                     colY = newY + FOOT_OFFSET_Y - COLLIDER_H;
                 }
             }

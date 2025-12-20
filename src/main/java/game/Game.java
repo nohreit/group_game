@@ -3,9 +3,9 @@ package main.java.game;
 import javax.swing.*;
 
 public class Game {
-    public static final int VIRTUAL_WIDTH = 1280;
-    public static final int VIRTUAL_HEIGHT = 720;
-    public static final int SCALE = 1;
+    public static final int VIRTUAL_WIDTH = 640;
+    public static final int VIRTUAL_HEIGHT = 360;
+    public static final int SCALE = 3;
 
     private static JFrame frame;
     private static GamePanel panel;
