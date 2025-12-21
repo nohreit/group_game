@@ -113,6 +113,7 @@ public class GamePanel extends JPanel implements Runnable {
     private void spawnPlayerTile(int tileX, int tileY) {
         String playerBase = "/main/assets/sprites/player/Main_Characters/Virtual_Guy/";
         player = new Player(tileX * TILE + TILE / 2f, tileY * TILE + TILE / 2f, playerBase);
+        player.clampToWorld(map);
     }
 
     private void spawnEnemyTile(int tileX, int tileY) {

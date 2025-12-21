@@ -36,6 +36,11 @@ public class Player {
     private static final int MAX_JUMPS = 2;
     private int jumpsLeft = MAX_JUMPS; // Number of jumps we have left (default = 2)
 
+    // One-way drop-through
+    private boolean dropping = false;
+    private static final float DROP_PUSH = 2f;        // px: nudge down to clear the top surface
+
+
     // COYOTE_TIME: Short grace period after leaving the ground during which the player is still allowed to jump. (From the Looney Tones cartoon. Meep Meep :)
     private static final float COYOTE_TIME = 0.08f; // seconds
     private static final float JUMP_BUFFER = 0.10f; // seconds; countdown timer on how lo
@@ -92,15 +97,28 @@ public class Player {
         setAnim(AnimState.IDLE);
     }
 
+    public void clampToWorld(TiledMap map) {
+        // prevent top-of-screen spawn
+        float minY = (COLLIDER_H / 2f) - COLLIDER_OFFSET_Y + 2f;
+        if (y < minY) y = minY;
+
+        float minX = COLLIDER_W / 2f + 2f;
+        if (x < minX) x = minX;
+    }
+
+
     public void update(TiledMap map, float dx, boolean jumpPressed, boolean jumpReleased, boolean downHeld, float dt) {
-        boolean wasOnGround = onGround;      // ✅ add
-        boolean jumpedThisFrame = false;     // ✅ add
+        boolean wasOnGround = onGround;
+        boolean jumpedThisFrame = false;
+        boolean didDrop = false;
+
 
         // Update jump timers
         if (onGround) coyoteTimer = COYOTE_TIME;
         else coyoteTimer = Math.max(0f, coyoteTimer - dt);
 
         dropTimer = Math.max(0f, dropTimer - dt);
+        if (dropTimer <= 0f) dropping = false;
         hurtTimer = Math.max(0f, hurtTimer - dt);
         hitLockTimer = Math.max(0f, hitLockTimer - dt);
         hitAnimTimer = Math.max(0f, hitAnimTimer - dt);
@@ -118,13 +136,23 @@ public class Player {
         }
 
         if (downHeld && jumpPressed && onGround) {
+            System.out.println("Drop down");
+            dropping = true;
             dropTimer = DROP_TIME;
             onGround = false;
-            y += 1f;
+            y += DROP_PUSH;
+
+            jumpBufferTimer = 0f;
+            coyoteTimer = 0f;
+            didDrop = true;
         }
 
-        if (jumpPressed) jumpBufferTimer = JUMP_BUFFER;
-        else jumpBufferTimer = Math.max(0f, jumpBufferTimer - dt);
+        if (!didDrop) {
+            if (jumpPressed) jumpBufferTimer = JUMP_BUFFER;
+            else jumpBufferTimer = Math.max(0f, jumpBufferTimer - dt);
+        } else {
+            jumpBufferTimer = Math.max(0f, jumpBufferTimer - dt);
+        }
 
 // Consume buffered jump if allowed (ground/coyote OR air double-jump)
         if (jumpBufferTimer > 0f) {
@@ -305,19 +333,17 @@ public class Player {
                 if (!c.rect.intersects(testX, newColTop, COLLIDER_W, COLLIDER_H)) continue;
 
                 if (vy > 0f) {
-                    // Falling: collide with SOLID always.
-                    // Collide with ONE_WAY only if:
-                    // - we were above the platform top last frame
-                    // - we are now at/under the platform top
-                    // - not currently dropping through
                     if (c.type == Collider.Type.ONE_WAY) {
-                        if (dropTimer > 0f) continue;
+                        // ignore one-way platforms while dropping
+                        if (dropping) continue;
 
                         float platformTop = c.rect.y;
 
+                        // Only allow landing when we were above the top and are crossing it while falling
                         boolean wasAbove = prevColBottom <= platformTop + 0.5f;
                         boolean nowCrossed = newColBottom >= platformTop;
 
+                        // extra horizontal guard (prevents edge-snags)
                         float playerLeft = testX;
                         float playerRight = testX + COLLIDER_W;
 
@@ -328,6 +354,7 @@ public class Player {
 
                         if (!(wasAbove && nowCrossed && overlapsHorizontally)) continue;
                     }
+
 
                     if (c.type == Collider.Type.TRAP) continue;
 
