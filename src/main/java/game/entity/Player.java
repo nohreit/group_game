@@ -24,6 +24,9 @@ public class Player {
     private float vx = 0f, vy = 0f; // Velocity
     private boolean onGround = false; // Check if player is on the ground
 
+    private boolean levelComplete = false;
+
+
     // Tune these
     private static final float MOVE_SPEED = 120f;  // px/sec
     private static final float GRAVITY = 520f;  // px/sec^2
@@ -197,6 +200,7 @@ public class Player {
         }
 
         checkTraps(map);
+        checkGoal(map);
 
         // Update anim state and tick frames
         updateAnimation();
@@ -276,6 +280,26 @@ public class Player {
         };
 
         if (currentAnim != null) currentAnim.reset();
+    }
+
+    private void checkGoal(TiledMap map) {
+        if (levelComplete) return;
+
+        int goalCount = 0;
+
+        float cx = x - COLLIDER_W / 2f;
+        float cy = colY();
+
+        for (Collider c : map.colliders) {
+            if (c.type != Collider.Type.GOAL) goalCount++;
+
+            if (c.rect.intersects(cx, cy, COLLIDER_W, COLLIDER_H)) {
+                levelComplete = true;
+                vx = 0f;
+                vy = 0f;
+                break;
+            }
+        }
     }
 
     // Collider position in world-space

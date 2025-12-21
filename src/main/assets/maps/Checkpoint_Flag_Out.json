@@ -1,0 +1,14 @@
+{ "columns":52,
+ "image":"..\/sprites\/decorations\/Items\/Checkpoints\/Checkpoint\/Checkpoint_Flag_Out.png",
+ "imageheight":64,
+ "imagewidth":1664,
+ "margin":0,
+ "name":"Checkpoint_Flag_Out",
+ "spacing":0,
+ "tilecount":104,
+ "tiledversion":"1.11.2",
+ "tileheight":16,
+ "tilewidth":16,
+ "type":"tileset",
+ "version":"1.10"
+}

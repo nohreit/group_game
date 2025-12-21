@@ -1,7 +1,7 @@
 package main.java.game.physics;
 
 public class Collider {
-    public enum Type { SOLID, ONE_WAY, TRAP }
+    public enum Type {SOLID, ONE_WAY, TRAP, GOAL}
 
     public final Rect rect;
     public final Type type;

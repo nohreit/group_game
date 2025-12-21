@@ -64,13 +64,14 @@ public class GamePanel extends JPanel implements Runnable {
         try {
             map = TiledLoader.loadJsonMap(mapResourcePath);
 
-            int solid = 0, oneWay = 0, trap = 0;
+            int solid = 0, oneWay = 0, trap = 0, goal = 0;
             for (Collider c : map.colliders) {
                 if (c.type == Collider.Type.SOLID) solid++;
                 else if (c.type == Collider.Type.ONE_WAY) oneWay++;
                 else if (c.type == Collider.Type.TRAP) trap++;
+                else if (c.type == Collider.Type.GOAL) goal++;
             }
-            System.out.println("Colliders => SOLID=" + solid + " ONE_WAY=" + oneWay + " HAZARD=" + trap);
+            System.out.println("Colliders => SOLID=" + solid + " ONE_WAY=" + oneWay + " TRAP=" + trap + " GOAL=" + goal);
 
         } catch (Exception e) {
             throw new RuntimeException("Failed to load map: " + e.getMessage(), e);
@@ -78,7 +79,7 @@ public class GamePanel extends JPanel implements Runnable {
 
         camera = new Camera(0, 0, vw, vh, map.getPixelWidth(), map.getPixelHeight());
 
-        spawnPlayerTile(4, 8);
+        spawnPlayerTile(2, 9);
 //        spawnEnemies();
     }
 

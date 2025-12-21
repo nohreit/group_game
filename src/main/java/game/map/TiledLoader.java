@@ -101,6 +101,24 @@ public class TiledLoader {
                     boolean isOneWayCollision = name.equalsIgnoreCase("OneWay")
                             || name.equalsIgnoreCase("OneWayCollision");
 
+                    boolean isGoalCollision = name.equalsIgnoreCase("Goal");
+
+                    if (isGoalCollision) {
+                        for (int ty = 0; ty < height; ty++) {
+                            for (int tx = 0; tx < width; tx++) {
+                                int idx = ty * width + tx;
+                                if (data[idx] != 0) {
+                                    map.colliders.add(new Collider(
+                                            new Rect(tx * tileW, ty * tileH, tileW, tileH),
+                                            Collider.Type.GOAL
+                                    ));
+                                }
+                            }
+                        }
+                        continue; // don't render goal layer
+                    }
+
+
                     // If you want Hazards to render, do NOT treat it as collision here.
                     if (isSolidCollision || isOneWayCollision) {
                         Collider.Type ctype =
@@ -208,12 +226,46 @@ public class TiledLoader {
                                 System.out.println("[TRAP-LOAD] " + tag + " x=" + x + " y=" + y + " w=" + w + " h=" + h + " dmg=" + damage);
                         }
                     }
+                    // GAMEPLAY object layer
+                    /*else if (name.equalsIgnoreCase("Gameplay")) {
+                        System.out.println("TileLoader.Gameplay");
+                        JsonArray objs = lay.getAsJsonArray("objects");
+                        for (JsonElement oe : objs) {
+                            JsonObject o = oe.getAsJsonObject();
+
+                            int x = (int) Math.round(o.get("x").getAsDouble());
+                            int y = (int) Math.round(o.get("y").getAsDouble());
+                            int w = (int) Math.round(o.get("width").getAsDouble());
+                            int h = (int) Math.round(o.get("height").getAsDouble());
+
+                            Collider.Type ctype = null;
+
+                            if (o.has("properties")) {
+                                JsonArray props = o.getAsJsonArray("properties");
+                                for (JsonElement pe : props) {
+                                    JsonObject p = pe.getAsJsonObject();
+                                    String pname = p.get("name").getAsString();
+
+                                    if ("collision".equalsIgnoreCase(pname) || "type".equalsIgnoreCase(pname)) {
+                                        String v = p.get("value").getAsString();
+
+                                        if ("goal".equalsIgnoreCase(v)) ctype = Collider.Type.GOAL;
+                                        // (optional future)
+                                        // if ("spawn".equalsIgnoreCase(v)) ...
+                                    }
+                                }
+                            }
+
+                            if (ctype != null) {
+                                map.colliders.add(new Collider(new Rect(x, y, w, h), ctype));
+                                if (DEBUG)
+                                    System.out.println("[GAMEPLAY-LOAD] " + ctype + " x=" + x + " y=" + y + " w=" + w + " h=" + h);
+                            }
+                        }
+                    }*/
+
                 }
-
-
-                // Gameplay objectgroup etc can be handled elsewhere (spawn points)
             }
-
             return map;
 
         } catch (Exception ex) {
