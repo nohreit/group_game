@@ -4,6 +4,7 @@ import main.java.game.gfx.Camera;
 import main.java.game.physics.Collider;
 
 import java.awt.Graphics2D;
+import java.awt.geom.AffineTransform;
 import java.awt.image.BufferedImage;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -13,6 +14,12 @@ public class TiledMap {
 
     public record Tileset(int firstGid, int columns, BufferedImage tilesetImage) {
     }
+
+    private static final int GID_MASK = 0x1FFFFFFF;
+    private static final int FLIP_H = 0x80000000;
+    private static final int FLIP_V = 0x40000000;
+    private static final int FLIP_D = 0x20000000;
+
 
     public final int width, height;           // map size in tiles
     public final int tileWidth, tileHeight;   // tile size in pixels
@@ -46,7 +53,7 @@ public class TiledMap {
     }
 
     /**
-     * Tileset lookup in O(log N): find the largest tileset.firstGid <= gid
+     * Tileset lookup to find the largest tileset.firstGid <= gid
      */
     private Tileset tilesetForGid(int gid) {
         if (tilesets.isEmpty()) return null;
@@ -71,8 +78,6 @@ public class TiledMap {
     public void draw(Graphics2D g2d, Camera camera) {
         if (tilesets.isEmpty() || layers.isEmpty()) return;
 
-        // ---- Visible tile bounds (culling) ----
-        // Assumes Camera has x,y (world) and w,h (viewport size in pixels).
         int startX = Math.max(0, (int) (camera.x / tileWidth));
         int startY = Math.max(0, (int) (camera.y / tileHeight));
 
@@ -82,14 +87,21 @@ public class TiledMap {
         int camX = (int) camera.x;
         int camY = (int) camera.y;
 
+        AffineTransform old = g2d.getTransform();
+
         for (int[] layer : layers) {
             for (int y = startY; y < endY; y++) {
                 int row = y * width;
                 int dy = y * tileHeight - camY;
 
                 for (int x = startX; x < endX; x++) {
-                    int gid = layer[row + x];
+                    int raw = layer[row + x];
+                    int gid = raw & GID_MASK;
                     if (gid == 0) continue;
+
+                    boolean fh = (raw & FLIP_H) != 0;
+                    boolean fv = (raw & FLIP_V) != 0;
+                    boolean fd = (raw & FLIP_D) != 0;
 
                     Tileset ts = tilesetForGid(gid);
                     if (ts == null) continue;
@@ -102,14 +114,50 @@ public class TiledMap {
 
                     int dx = x * tileWidth - camX;
 
+                    // Fast path: no transform flags
+                    if (!fh && !fv && !fd) {
+                        g2d.drawImage(
+                                ts.tilesetImage(),
+                                dx, dy, dx + tileWidth, dy + tileHeight,
+                                sx, sy, sx + tileWidth, sy + tileHeight,
+                                null
+                        );
+                        continue;
+                    }
+
+                    // Transform path (Tiled flip/rotate)
+                    AffineTransform at = new AffineTransform();
+                    at.translate(dx, dy);
+
+                    // Diagonal flip: swap axes; combined with H/V encodes rotations
+                    if (fd) {
+                        at.translate(0, tileHeight);
+                        at.rotate(-Math.PI / 2.0);
+                        boolean tmp = fh;
+                        fh = fv;
+                        fv = tmp;
+                    }
+
+                    if (fh) {
+                        at.translate(tileWidth, 0);
+                        at.scale(-1, 1);
+                    }
+                    if (fv) {
+                        at.translate(0, tileHeight);
+                        at.scale(1, -1);
+                    }
+
+                    g2d.setTransform(at);
                     g2d.drawImage(
                             ts.tilesetImage(),
-                            dx, dy, dx + tileWidth, dy + tileHeight,
+                            0, 0, tileWidth, tileHeight,
                             sx, sy, sx + tileWidth, sy + tileHeight,
                             null
                     );
+                    g2d.setTransform(old);
                 }
             }
         }
     }
+
 }

@@ -16,10 +16,10 @@ public class TiledLoader {
     // Mask off flip/rotation bits from Tiled GIDs
     private static final int GID_MASK = 0x1FFFFFFF;
 
-    // Submission default: OFF
+    // default: OFF
     private static final boolean DEBUG = false;
 
-    // Layer name conventions (centralized)
+    // Layer name conventions
     private static final String LAYER_COLLISION = "Collision";
     private static final String LAYER_ONEWAY_1 = "OneWay";
     private static final String LAYER_ONEWAY_2 = "OneWayCollision";
@@ -133,7 +133,7 @@ public class TiledLoader {
         int[] data = new int[arr.size()];
         for (int i = 0; i < arr.size(); i++) {
             int raw = arr.get(i).getAsInt();
-            data[i] = raw & GID_MASK;
+            data[i] = raw /*& GID_MASK*/;
         }
 
         // Collision layers (not rendered)
@@ -157,8 +157,8 @@ public class TiledLoader {
     }
 
     /**
-     * Performance: merge adjacent non-zero tiles horizontally into a single Rect per run.
-     * This drastically reduces collider count vs per-tile rectangles.
+     * This merges adjacent non-zero tiles horizontally into a single Rect per run.
+     * It drastically reduces collider count vs per-tile rectangles.
      */
     private static void addTileCollidersMergedHorizontally(TiledMap map, int[] data, Collider.Type type) {
         int width = map.width;
@@ -171,7 +171,7 @@ public class TiledLoader {
             while (tx < width) {
                 int idx = ty * width + tx;
 
-                if (data[idx] == 0) {
+                if ((data[idx] & GID_MASK) == 0) {
                     tx++;
                     continue;
                 }
@@ -180,9 +180,14 @@ public class TiledLoader {
                 int startX = tx;
                 int endX = tx;
 
-                while (endX + 1 < width && data[ty * width + (endX + 1)] != 0) {
+                /*while (endX + 1 < width && data[ty * width + (endX + 1)] != 0) {
+                    endX++;
+                }*/
+
+                while (endX + 1 < width && (data[ty * width + (endX + 1)] & GID_MASK) != 0) {
                     endX++;
                 }
+
 
                 int px = startX * tileW;
                 int py = ty * tileH;
@@ -227,7 +232,7 @@ public class TiledLoader {
             JsonObject o = oe.getAsJsonObject();
 
             String oname = o.has("name") ? o.get("name").getAsString() : "";
-            String type  = o.has("type") ? o.get("type").getAsString() : "";
+            String type = o.has("type") ? o.get("type").getAsString() : "";
 
             if (!OBJ_GOAL.equalsIgnoreCase(oname) && !OBJ_GOAL.equalsIgnoreCase(type)) continue;
 
@@ -243,7 +248,8 @@ public class TiledLoader {
             count++;
         }
 
-        if (DEBUG) System.out.println("[GOAL] loaded " + count + " goal objects; total colliders now: " + map.colliders.size());
+        if (DEBUG)
+            System.out.println("[GOAL] loaded " + count + " goal objects; total colliders now: " + map.colliders.size());
     }
 
     private static void loadSolidAndOneWayObjects(JsonArray objs, TiledMap map) {

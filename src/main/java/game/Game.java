@@ -12,7 +12,7 @@ public class Game {
 
     public static void main(String[] args) {
         SwingUtilities.invokeLater(() -> {
-            frame = new JFrame("Zelda-like");
+            frame = new JFrame("Trap-Mania");
             frame.setDefaultCloseOperation(WindowConstants.EXIT_ON_CLOSE);
             frame.setResizable(false);
 

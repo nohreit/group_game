@@ -23,6 +23,12 @@ public class GamePanel extends JPanel implements Runnable {
     private static final double DT = 1.0 / TARGET_FPS;
     private static final int MAX_CATCHUP_STEPS = 5;
 
+    // Stages
+    private int stage = 0;
+
+    private static final String MAP_STAGE_1 = "/main/assets/maps/map0.json";
+    private static final String MAP_STAGE_2 = "/main/assets/maps/map1.json";
+
     // Toggle for drawing colliders / hurtboxes, and printing debug info.
     private static final boolean DEBUG = false;
 
@@ -67,13 +73,12 @@ public class GamePanel extends JPanel implements Runnable {
 
         setPreferredSize(new Dimension(vw * scale, vh * scale));
         setFocusable(true);
-        // NOTE: requestFocusInWindow() often fails in constructor; see addNotify().
     }
 
     @Override
     public void addNotify() {
         super.addNotify();
-        requestFocusInWindow(); // more reliable for keyboard focus once component is displayable
+        requestFocusInWindow();
     }
 
     public void init() {
@@ -83,7 +88,7 @@ public class GamePanel extends JPanel implements Runnable {
         addKeyListener(input);
 
         try {
-            map = TiledLoader.loadJsonMap(MAP_RESOURCE_PATH);
+            map = TiledLoader.loadJsonMap(MAP_STAGE_1);
         } catch (Exception e) {
             throw new RuntimeException("Failed to load map: " + MAP_RESOURCE_PATH, e);
         }
@@ -99,6 +104,19 @@ public class GamePanel extends JPanel implements Runnable {
             System.out.println("Colliders => SOLID=" + solid + " ONE_WAY=" + oneWay + " TRAP=" + trap + " GOAL=" + goal);
         }
 
+        loadStage(0);
+
+        spawnPlayerTile(2, 9);
+        // spawnEnemies(); // future implementation
+    }
+
+    // Stage loader
+    private void loadStage(int newStage) {
+        stage = newStage;
+
+        String res = (stage == 0) ? MAP_STAGE_1 : MAP_STAGE_2;
+        map = TiledLoader.loadJsonMap(res);
+
         camera = new Camera(
                 0, 0,
                 vw, vh,
@@ -106,9 +124,17 @@ public class GamePanel extends JPanel implements Runnable {
                 map.getPixelHeight()
         );
 
-        spawnPlayerTile(2, 9);
-        // spawnEnemies(); // enable if you want enemies in submission build
+        // TODO: upgrade later to PlayerSpawn object; for now keep tiles
+        if (stage == 0) spawnPlayerTile(2, 9);
+        else if (stage == 1) spawnPlayerTile(2, 9);
+
+        // Reset runtime state between stages
+        player.reset();
+        player.clampToWorld(map);
+
+        camera.centerOn(player.x, player.y);
     }
+
 
     // ---- Public loop control ----
 
@@ -117,18 +143,6 @@ public class GamePanel extends JPanel implements Runnable {
         running = true;
         loopThread = new Thread(this, "game-loop");
         loopThread.start();
-    }
-
-    // Optional: call this on window close
-    public void stopLoop() {
-        running = false;
-        if (loopThread != null) {
-            try {
-                loopThread.join(500);
-            } catch (InterruptedException ignored) {
-            }
-            loopThread = null;
-        }
     }
 
     // ---- Swing paint ----
@@ -195,7 +209,7 @@ public class GamePanel extends JPanel implements Runnable {
 
         // Movement
         float dx = 0f;
-        final float speed = 120f; // consider moving into Player constants if it belongs there
+        final float speed = 120f;
         if (input.isLeft()) dx -= (float) (speed * dt);
         if (input.isRight()) dx += (float) (speed * dt);
 
@@ -204,19 +218,25 @@ public class GamePanel extends JPanel implements Runnable {
         boolean jumpReleased = input.isJumpReleased();
         boolean downHeld = input.isDown();
 
-        // NOTE: If Player.tick(dt) and Player.update(..., dt) both advance time/physics,
-        // you may be effectively double-applying dt. If tick() is animations only, this is fine.
-        player.tick(dt);
+//        player.tick(dt);
         player.update(map, dx, jumpPressed, jumpReleased, downHeld, (float) dt);
 
-        if (player.isDead()) state = GameState.GAME_OVER;
-        else if (player.isLevelComplete()) state = GameState.WIN;
+        if (player.isDead()) {
+            state = GameState.GAME_OVER;
+        } else if (player.isLevelComplete()) {
+            if (stage == 0) {
+                loadStage(1);
+            } else {
+                state = GameState.WIN;
+            }
+        }
 
 
         camera.centerOn(player.x, player.y);
 
         input.endFrame();
     }
+
 
     private void render() {
         if (backbuffer == null || map == null || camera == null || player == null) return;
@@ -234,9 +254,9 @@ public class GamePanel extends JPanel implements Runnable {
                 map.draw(g, camera);
 
                 // Enemies (if enabled)
-                for (EnemyWarrior e : enemies) {
+                /* for (EnemyWarrior e : enemies) {
                     if (!e.isRemoved()) e.draw(g, camera);
-                }
+                }*/
 
                 // Player
                 player.draw(g, camera);
@@ -262,7 +282,7 @@ public class GamePanel extends JPanel implements Runnable {
             }
         }
 
-        repaint(); // safe from background thread; schedules EDT repaint
+        repaint();
     }
 
     private void drawHUD(Graphics2D g) {
@@ -278,9 +298,12 @@ public class GamePanel extends JPanel implements Runnable {
         g.setColor(Color.WHITE);
         g.drawString("HP", 8, y + 18);
 
-        // HP hearts / blocks
+        // HP hearts / blocks (no sprite for that yet)
         int hp = player.getHp();
         int maxHp = Player.MAX_HP;
+
+        // Stage number
+        g.drawString("Stage " + (stage + 1), vw - 80, vh - 10);
 
         int barX = 36;
         int barY = y + 8;
@@ -318,9 +341,7 @@ public class GamePanel extends JPanel implements Runnable {
 
     private void restart() {
         state = GameState.PLAYING;
-        spawnPlayerTile(4, 8);
-        // spawnEnemies();
-        camera.centerOn(player.x, player.y);
+        loadStage(0);
     }
 
     // ---- Spawning helpers ----

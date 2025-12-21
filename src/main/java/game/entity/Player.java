@@ -221,7 +221,6 @@ public class Player {
         if (currentAnim != null) currentAnim.update();
     }
 
-    // Kept because GamePanel calls it
     public void tick(double dt) { /* reserved for future use */ }
 
     public Rect getHurtbox() {
@@ -323,6 +322,16 @@ public class Player {
                 break;
             }
         }
+    }
+
+    public void reset() {
+        resetHp();
+
+        // Clear per-run flags
+        levelComplete = false;
+         invulnTimer = 0f;
+         vx = 0f; vy = 0f;
+         onGround = false;
     }
 
 
