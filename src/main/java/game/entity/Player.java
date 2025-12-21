@@ -3,8 +3,8 @@ package main.java.game.entity;
 import main.java.game.gfx.Animation;
 import main.java.game.gfx.Camera;
 import main.java.game.map.TiledMap;
-import main.java.game.physics.Rect;
 import main.java.game.physics.Collider;
+import main.java.game.physics.Rect;
 
 import javax.imageio.ImageIO;
 import java.awt.*;
@@ -18,63 +18,64 @@ public class Player {
     public float x;
     public float y;
 
-    private static final boolean DEBUG = true;
+    // Submission default: OFF
+    private static final boolean DEBUG = false;
 
     // ---- Platformer physics ----
-    private float vx = 0f, vy = 0f; // Velocity
-    private boolean onGround = false; // Check if player is on the ground
+    private float vx = 0f, vy = 0f;
+    private boolean onGround = false;
 
     private boolean levelComplete = false;
 
-
-    // Tune these
-    private static final float MOVE_SPEED = 120f;  // px/sec
-    private static final float GRAVITY = 520f;  // px/sec^2
-    private static final float JUMP_VEL = -220f; // px/sec (negative = up)
-    private static final float MAX_FALL = 520f;  // px/sec
+    // Tunnable values based on preferences
+    private static final float MOVE_SPEED = 120f;   // px/sec
+    private static final float GRAVITY = 520f;      // px/sec^2
+    private static final float JUMP_VEL = -220f;    // px/sec (negative = up)
+    private static final float MAX_FALL = 520f;     // px/sec
 
     // Jump feel helpers
+    private static final float COYOTE_TIME = 0.08f;
+    private static final float JUMP_BUFFER = 0.10f;
+
     private float coyoteTimer = 0f;
     private float jumpBufferTimer = 0f;
+
     private static final int MAX_JUMPS = 2;
-    private int jumpsLeft = MAX_JUMPS; // Number of jumps we have left (default = 2)
+    private int jumpsLeft = MAX_JUMPS;
 
     // One-way drop-through
     private boolean dropping = false;
-    private static final float DROP_PUSH = 2f;        // px: nudge down to clear the top surface
+    private float dropTimer = 0f;
+    private static final float DROP_TIME = 0.18f;
+    private static final float DROP_PUSH = 2f;
 
+    private static final float ONE_WAY_EDGE_PAD = 2f;
 
-    // COYOTE_TIME: Short grace period after leaving the ground during which the player is still allowed to jump. (From the Looney Tones cartoon. Meep Meep :)
-    private static final float COYOTE_TIME = 0.08f; // seconds
-    private static final float JUMP_BUFFER = 0.10f; // seconds; countdown timer on how lo
+    // Player current state
+    public static final int MAX_HP = 3;
 
-    // Hurt timer helper
-    private float hurtTimer = 0f;
-    private float hurtCooldown = 0.5f;
+    private int hp = MAX_HP;
+    private boolean dead = false;
 
-    // Knockback constants
-    private static final float HIT_KNOCKBACK_X = 140f;  // px/sec
-    private static final float HIT_KNOCKBACK_Y = -180f; // px/sec (negative = up)
-    private static final float HIT_LOCK_TIME = 0.18f; // optional: brief control lock
+    // Hurt / knockback
+    private float invulnTimer = 0f;
+    private static final float INVULN_TIME = 0.50f;
+
+    private static final float HIT_KNOCKBACK_X = 140f;
+    private static final float HIT_KNOCKBACK_Y = -180f;
+    private static final float HIT_LOCK_TIME = 0.18f;
     private static final float HIT_ANIM_TIME = 0.22f;
 
     private float hitLockTimer = 0f;
     private float hitAnimTimer = 0f;
 
-
     // Collider (smaller than sprite)
     private static final int COLLIDER_W = 12;
     private static final int COLLIDER_H = 18;
-    private static final int COLLIDER_OFFSET_Y = 6; // pushes collider down inside sprite
-
-    private static final float ONE_WAY_EDGE_PAD = 2f;
+    private static final int COLLIDER_OFFSET_Y = 6;
 
     // Facing
     private boolean facingLeft = false;
-
-    private float dropTimer = 0f;
-    private static final float DROP_TIME = 0.18f; // seconds you can fall through one-way
-
 
     // Animations
     private enum AnimState {IDLE, RUN, JUMP, FALL, HIT}
@@ -83,14 +84,18 @@ public class Player {
 
     private Animation idleAnim;
     private Animation runAnim;
-    private Animation jumpAnim; // optional, falls back to idle
-    private Animation fallAnim; // optional, falls back to idle
+    private Animation jumpAnim;
+    private Animation fallAnim;
     private Animation hitAnim;
 
     private Animation currentAnim;
 
-    // Base folder where sprites live
     private final String spriteBasePath;
+
+    public boolean isLevelComplete() {
+        return levelComplete;
+    }
+
 
     public Player(float x, float y, String spriteBasePath) {
         this.x = x;
@@ -109,37 +114,46 @@ public class Player {
         if (x < minX) x = minX;
     }
 
-
+    /**
+     * dx is intended horizontal displacement for this frame (px).
+     * Player converts it back into velocity for collision movement.
+     */
     public void update(TiledMap map, float dx, boolean jumpPressed, boolean jumpReleased, boolean downHeld, float dt) {
+        if (map == null) {
+            x += vx * dt;
+            y += vy * dt;
+            return;
+        }
+
         boolean wasOnGround = onGround;
         boolean jumpedThisFrame = false;
-        boolean didDrop = false;
+        boolean didDropThisFrame = false;
 
-
-        // Update jump timers
+        // Timers
         if (onGround) coyoteTimer = COYOTE_TIME;
         else coyoteTimer = Math.max(0f, coyoteTimer - dt);
 
         dropTimer = Math.max(0f, dropTimer - dt);
         if (dropTimer <= 0f) dropping = false;
-        hurtTimer = Math.max(0f, hurtTimer - dt);
+
+        invulnTimer = Math.max(0f, invulnTimer - dt);
         hitLockTimer = Math.max(0f, hitLockTimer - dt);
         hitAnimTimer = Math.max(0f, hitAnimTimer - dt);
 
+        // Horizontal intent (only if not locked by hit)
         if (hitLockTimer <= 0f) {
             float targetVx = (dt > 0f) ? (dx / dt) : 0f;
-            if (targetVx > MOVE_SPEED) targetVx = MOVE_SPEED; // Move to the right (positive movement speed)
-            if (targetVx < -MOVE_SPEED) targetVx = -MOVE_SPEED; // Move to the left (negative movement speed)
+            if (targetVx > MOVE_SPEED) targetVx = MOVE_SPEED;
+            if (targetVx < -MOVE_SPEED) targetVx = -MOVE_SPEED;
 
-            vx = targetVx; // Keep the last speed value before idle
+            vx = targetVx;
 
-            // Facing based on movement intent
-            if (vx < -0.01f) facingLeft = true; // For the player idleSprite to face left
-            else if (vx > 0.01f) facingLeft = false; // For the player idleSprite to face right (default)
+            if (vx < -0.01f) facingLeft = true;
+            else if (vx > 0.01f) facingLeft = false;
         }
 
+        // Drop through one-way (down + jump on ground)
         if (downHeld && jumpPressed && onGround) {
-            System.out.println("Drop down");
             dropping = true;
             dropTimer = DROP_TIME;
             onGround = false;
@@ -147,45 +161,44 @@ public class Player {
 
             jumpBufferTimer = 0f;
             coyoteTimer = 0f;
-            didDrop = true;
+            didDropThisFrame = true;
+
+            if (DEBUG) System.out.println("[DROP] one-way drop");
         }
 
-        if (!didDrop) {
+        // Jump buffer
+        if (!didDropThisFrame) {
             if (jumpPressed) jumpBufferTimer = JUMP_BUFFER;
             else jumpBufferTimer = Math.max(0f, jumpBufferTimer - dt);
         } else {
             jumpBufferTimer = Math.max(0f, jumpBufferTimer - dt);
         }
 
-// Consume buffered jump if allowed (ground/coyote OR air double-jump)
+        // Consume buffered jump if allowed
         if (jumpBufferTimer > 0f) {
-
-            // 1) Ground / coyote jump
+            // Ground/coyote
             if (coyoteTimer > 0f && jumpsLeft > 0) {
                 vy = JUMP_VEL;
                 onGround = false;
 
-                jumpsLeft--;              // ✅ consume jump
+                jumpsLeft--;
                 jumpedThisFrame = true;
 
                 coyoteTimer = 0f;
                 jumpBufferTimer = 0f;
             }
-            // 2) Air jump (double jump)
+            // Air jump
             else if (!onGround && jumpsLeft > 0) {
-                vy = JUMP_VEL * 0.9f;            // you can do *0.9f for a weaker 2nd jump if you want
-                jumpsLeft--;              // ✅ consume jump
+                vy = JUMP_VEL * 0.9f;
+                jumpsLeft--;
                 jumpedThisFrame = true;
 
                 jumpBufferTimer = 0f;
             }
         }
 
-
-        // Variable jump: releasing jump early cuts upward velocity
-        if (jumpReleased && vy < 0f) {
-            vy *= 0.45f;
-        }
+        // Variable jump height
+        if (jumpReleased && vy < 0f) vy *= 0.45f;
 
         // Gravity
         vy += GRAVITY * dt;
@@ -194,21 +207,22 @@ public class Player {
         // Move + collide
         moveAndCollide(map, dt);
 
-        // If we just left the ground without jumping, count that as "using" the ground jump
+        // If we just left ground without jumping, we’ve consumed the “ground jump”
         if (wasOnGround && !onGround && !jumpedThisFrame) {
-            jumpsLeft = Math.min(jumpsLeft, MAX_JUMPS - 1); // usually becomes 1
+            jumpsLeft = Math.min(jumpsLeft, MAX_JUMPS - 1);
         }
 
+        // Gameplay checks
         checkTraps(map);
         checkGoal(map);
 
-        // Update anim state and tick frames
+        // Animations
         updateAnimation();
         if (currentAnim != null) currentAnim.update();
     }
 
-    // Optional (kept because your GamePanel calls tick(dt); safe no-op)
-    public void tick(double dt) { /* no timers needed here for now */ }
+    // Kept because GamePanel calls it
+    public void tick(double dt) { /* reserved for future use */ }
 
     public Rect getHurtbox() {
         return new Rect((int) colX(), (int) colY(), COLLIDER_W, COLLIDER_H);
@@ -227,23 +241,17 @@ public class Player {
         int drawX = sx - fw / 2;
         int drawY = sy - fh / 2;
 
-        if (facingLeft) {
-            g.drawImage(frame, drawX + fw, drawY, -fw, fh, null);
-        } else {
-            g.drawImage(frame, drawX, drawY, null);
-        }
+        if (facingLeft) g.drawImage(frame, drawX + fw, drawY, -fw, fh, null);
+        else g.drawImage(frame, drawX, drawY, null);
     }
 
     // -------- Internals --------
 
     private void initAnimations() {
-        // Virtual Guy strips are horizontal. Use exact frame counts:
         idleAnim = loadStrip(spriteBasePath + "Idle.png", 11, 8);
         runAnim = loadStrip(spriteBasePath + "Run.png", 12, 4);
-
         hitAnim = loadStrip(spriteBasePath + "Hit.png", 7, 1);
 
-        // Optional sheets (if you don't have them, we fall back to idle)
         jumpAnim = loadStripOptional(spriteBasePath + "Jump.png", 1, 8);
         fallAnim = loadStripOptional(spriteBasePath + "Fall.png", 1, 8);
 
@@ -285,13 +293,11 @@ public class Player {
     private void checkGoal(TiledMap map) {
         if (levelComplete) return;
 
-        int goalCount = 0;
-
-        float cx = x - COLLIDER_W / 2f;
+        float cx = colX();
         float cy = colY();
 
         for (Collider c : map.colliders) {
-            if (c.type != Collider.Type.GOAL) goalCount++;
+            if (c.type != Collider.Type.GOAL) continue;
 
             if (c.rect.intersects(cx, cy, COLLIDER_W, COLLIDER_H)) {
                 levelComplete = true;
@@ -302,7 +308,60 @@ public class Player {
         }
     }
 
-    // Collider position in world-space
+    private void checkTraps(TiledMap map) {
+        if (invulnTimer > 0f) return;
+
+        float cx = colX();
+        float cy = colY();
+
+        for (Collider c : map.colliders) {
+            if (c.type != Collider.Type.TRAP) continue;
+
+            if (c.rect.intersects(cx, cy, COLLIDER_W, COLLIDER_H)) {
+                takeHit(c.damage);
+                if (DEBUG) System.out.println("[TRAP] hit " + c.tag + " dmg=" + c.damage);
+                break;
+            }
+        }
+    }
+
+
+    public int getHp() {
+        return hp;
+    }
+
+    public boolean isDead() {
+        return dead;
+    }
+
+    public void resetHp() {
+        hp = MAX_HP;
+        dead = false;
+    }
+
+    public void takeHit(int dmg) {
+        if (dead) return;
+        if (invulnTimer > 0f) return;
+        hp -= Math.max(0, dmg);
+        if (hp <= 0) {
+            hp = 0;
+            dead = true;
+        }
+
+        invulnTimer = INVULN_TIME;
+        hitLockTimer = HIT_LOCK_TIME;
+        hitAnimTimer = HIT_ANIM_TIME;
+
+        if (hitAnim != null) hitAnim.reset();
+
+        // Jump-back opposite of facing
+        float dir = facingLeft ? 1f : -1f;
+        vx = dir * HIT_KNOCKBACK_X;
+        vy = HIT_KNOCKBACK_Y;
+        onGround = false;
+    }
+
+    // Collider position in world-space (top-left of hurtbox)
     private float colX() {
         return x - COLLIDER_W / 2f;
     }
@@ -312,12 +371,6 @@ public class Player {
     }
 
     private void moveAndCollide(TiledMap map, float dt) {
-        if (map == null) {
-            x += vx * dt;
-            y += vy * dt;
-            return;
-        }
-
         // ---- Horizontal ----
         float newX = x + vx * dt;
         float cx = newX - COLLIDER_W / 2f;
@@ -325,11 +378,11 @@ public class Player {
 
         if (vx != 0f) {
             for (Collider c : map.colliders) {
+                if (c.type == Collider.Type.ONE_WAY) continue;
+                if (c.type == Collider.Type.TRAP) continue;
+                if (c.type == Collider.Type.GOAL) continue;
 
                 if (c.rect.intersects(cx, cy, COLLIDER_W, COLLIDER_H)) {
-                    if (c.type == Collider.Type.ONE_WAY) continue;
-                    if (c.type == Collider.Type.TRAP) continue;
-
                     if (vx > 0f) newX = c.rect.x - COLLIDER_W / 2f;
                     else newX = c.rect.x + c.rect.w + COLLIDER_W / 2f;
                     cx = newX - COLLIDER_W / 2f;
@@ -343,7 +396,6 @@ public class Player {
         float prevColBottom = prevColTop + COLLIDER_H;
 
         float newY = y + vy * dt;
-
         float newColTop = (newY - COLLIDER_H / 2f) + COLLIDER_OFFSET_Y;
         float newColBottom = newColTop + COLLIDER_H;
 
@@ -353,56 +405,44 @@ public class Player {
             float testX = colX();
 
             for (Collider c : map.colliders) {
-                // broad-phase AABB check using new position
+                if (c.type == Collider.Type.TRAP) continue;
+                if (c.type == Collider.Type.GOAL) continue;
+
                 if (!c.rect.intersects(testX, newColTop, COLLIDER_W, COLLIDER_H)) continue;
 
                 if (vy > 0f) {
                     if (c.type == Collider.Type.ONE_WAY) {
-                        // ignore one-way platforms while dropping
                         if (dropping) continue;
 
                         float platformTop = c.rect.y;
-
-                        // Only allow landing when we were above the top and are crossing it while falling
                         boolean wasAbove = prevColBottom <= platformTop + 0.5f;
                         boolean nowCrossed = newColBottom >= platformTop;
 
-                        // extra horizontal guard (prevents edge-snags)
                         float playerLeft = testX;
                         float playerRight = testX + COLLIDER_W;
 
                         float platLeft = c.rect.x + ONE_WAY_EDGE_PAD;
                         float platRight = c.rect.x + c.rect.w - ONE_WAY_EDGE_PAD;
 
-                        boolean overlapsHorizontally = playerRight > platLeft && playerLeft < platRight;
-
-                        if (!(wasAbove && nowCrossed && overlapsHorizontally)) continue;
+                        boolean overlapsHoriz = playerRight > platLeft && playerLeft < platRight;
+                        if (!(wasAbove && nowCrossed && overlapsHoriz)) continue;
                     }
-
-
-                    if (c.type == Collider.Type.TRAP) continue;
-
 
                     // land on top
                     float desiredColTop = c.rect.y - COLLIDER_H;
                     newY = (desiredColTop - COLLIDER_OFFSET_Y) + (COLLIDER_H / 2f);
                     vy = 0f;
                     landed = true;
-
-                    // recompute for remaining checks (optional)
-
                 } else {
-                    // Moving up: only SOLID stops you; ONE_WAY should be pass-through
+                    // Moving up: ONE_WAY should be pass-through
                     if (c.type == Collider.Type.ONE_WAY) continue;
-                    if (c.type == Collider.Type.TRAP) continue;
-
 
                     // hit head
                     float desiredColTop = c.rect.y + c.rect.h;
                     newY = (desiredColTop - COLLIDER_OFFSET_Y) + (COLLIDER_H / 2f);
                     vy = 0f;
-
                 }
+
                 newColTop = (newY - COLLIDER_H / 2f) + COLLIDER_OFFSET_Y;
                 newColBottom = newColTop + COLLIDER_H;
             }
@@ -413,46 +453,10 @@ public class Player {
         if (landed) {
             onGround = true;
             jumpsLeft = MAX_JUMPS;
-        } else if (vy != 0f) onGround = false;
-    }
-
-    private void checkTraps(TiledMap map) {
-        if (hurtTimer > 0f) return;
-
-        float cx = x - COLLIDER_W / 2f;
-        float cy = colY();
-
-        for (Collider c : map.colliders) {
-            if (c.type != Collider.Type.TRAP) continue;
-
-            if (c.rect.intersects(cx, cy, COLLIDER_W, COLLIDER_H)) {
-                takeHit(c.damage);
-                hurtTimer = hurtCooldown;
-                if (DEBUG) System.out.println("[TRAP] hit " + c.tag + " dmg=" + c.damage);
-                break;
-            }
+        } else if (vy != 0f) {
+            onGround = false;
         }
     }
-
-    public void takeHit(int dmg) {
-        // hp -= dmg; (optional for now)
-        if (hurtTimer > 0f) return;
-
-        hurtTimer = 0.40f; // Invulnerability window
-        hitLockTimer = HIT_LOCK_TIME;
-        hitAnimTimer = HIT_ANIM_TIME;
-
-        if (hitAnim != null) hitAnim.reset();
-
-        // Jump-back opposite of facing
-        float dir = facingLeft ? 1f : -1f;
-
-        vx = dir * HIT_KNOCKBACK_X;
-        vy = HIT_KNOCKBACK_Y;
-
-        onGround = false;
-    }
-
 
     private Animation loadStrip(String path, int frameCount, int frameDelay) {
         try {

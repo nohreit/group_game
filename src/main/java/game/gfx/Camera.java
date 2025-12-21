@@ -1,11 +1,19 @@
 package main.java.game.gfx;
 
-
+/**
+ * Camera represents a viewport into world space.
+ * (x, y) is the top-left corner of the view in world coordinates.
+ */
 public class Camera {
-    public float x, y; // top-left
-    public final int viewW, viewH;
-    private final int worldW, worldH;
 
+    // World-space position of the top-left corner (in pixels)
+    public float x, y;
+
+    // Viewport size in pixels
+    public final int viewW, viewH;
+
+    // World size in pixels
+    private final int worldW, worldH;
 
     public Camera(float x, float y, int viewW, int viewH, int worldW, int worldH) {
         this.x = x;
@@ -16,13 +24,27 @@ public class Camera {
         this.worldH = worldH;
     }
 
-
+    /**
+     * Center the camera on a world-space point (px, py).
+     */
     public void centerOn(float px, float py) {
         x = px - viewW / 2f;
         y = py - viewH / 2f;
         clamp();
     }
 
+    /**
+     * Explicitly set camera position (top-left) and clamp to world bounds.
+     */
+    public void setPosition(float x, float y) {
+        this.x = x;
+        this.y = y;
+        clamp();
+    }
+
+    /**
+     * Clamp camera to world bounds.
+     */
     public void clamp() {
         if (worldW <= viewW) {
             x = 0;
@@ -37,5 +59,14 @@ public class Camera {
             if (y < 0) y = 0;
             if (y > worldH - viewH) y = worldH - viewH;
         }
+    }
+
+    // Optional semantic getters (nice for future refactors)
+    public int getViewWidth() {
+        return viewW;
+    }
+
+    public int getViewHeight() {
+        return viewH;
     }
 }

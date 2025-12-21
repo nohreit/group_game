@@ -3,7 +3,7 @@ package main.java.game.gfx;
 import java.awt.image.BufferedImage;
 
 public class Animation {
-
+    // Note that aimation are frame-based, not time-based
     private final BufferedImage[] frames;
     private final int frameDelay;  // how many update() calls per frame
     private int tick = 0;

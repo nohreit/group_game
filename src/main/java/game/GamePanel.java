@@ -1,10 +1,11 @@
 package main.java.game;
 
+import main.java.game.entity.EnemyWarrior;
+import main.java.game.entity.Player;
 import main.java.game.gfx.Camera;
 import main.java.game.input.Input;
 import main.java.game.map.TiledLoader;
 import main.java.game.map.TiledMap;
-import main.java.game.entity.Player;
 import main.java.game.physics.Collider;
 import main.java.game.physics.Rect;
 
@@ -14,28 +15,45 @@ import java.awt.image.BufferedImage;
 import java.util.ArrayList;
 import java.util.List;
 
-import main.java.game.entity.EnemyWarrior;
-
 public class GamePanel extends JPanel implements Runnable {
 
+    // ---- Config / constants ----
+    private static final int TILE_SIZE = 16;
+    private static final double TARGET_FPS = 60.0;
+    private static final double DT = 1.0 / TARGET_FPS;
+    private static final int MAX_CATCHUP_STEPS = 5;
+
+    // Toggle for drawing colliders / hurtboxes, and printing debug info.
+    private static final boolean DEBUG = false;
+
+    private static final Color CLEAR_COLOR = new Color(24, 26, 29);
+    private static final Color OVERLAY_COLOR = new Color(0, 0, 0, 180);
+    private static final Font BIG_FONT = new Font("Arial", Font.BOLD, 48);
+    private static final Font SMALL_FONT = new Font("Arial", Font.PLAIN, 18);
+
+    private static final String MAP_RESOURCE_PATH = "/main/assets/maps/map0.json";
+    private static final String PLAYER_BASE = "/main/assets/sprites/player/Main_Characters/Virtual_Guy/";
+    private static final String ENEMY_BASE = "/main/assets/sprites/player/Red_Units/Warrior/";
+
+    // ---- View ----
     private final int vw;
     private final int vh;
+
+    // ---- Loop ----
     private Thread loopThread;
     private volatile boolean running;
 
+    // ---- State ----
     private GameState state = GameState.PLAYING;
 
     private BufferedImage backbuffer;
-    private Graphics2D g2d;
+    private final Object renderLock = new Object();
 
     private Input input;
     private TiledMap map;
     private Camera camera;
     private Player player;
     private final List<EnemyWarrior> enemies = new ArrayList<>();
-    private final Object renderLock = new Object();
-
-    int TILE = 16;
 
     public enum GameState {
         PLAYING,
@@ -46,24 +64,31 @@ public class GamePanel extends JPanel implements Runnable {
     public GamePanel(int virtualW, int virtualH, int scale) {
         this.vw = virtualW;
         this.vh = virtualH;
+
         setPreferredSize(new Dimension(vw * scale, vh * scale));
         setFocusable(true);
-        requestFocusInWindow();
+        // NOTE: requestFocusInWindow() often fails in constructor; see addNotify().
+    }
+
+    @Override
+    public void addNotify() {
+        super.addNotify();
+        requestFocusInWindow(); // more reliable for keyboard focus once component is displayable
     }
 
     public void init() {
         backbuffer = new BufferedImage(vw, vh, BufferedImage.TYPE_INT_ARGB);
-        String mapResourcePath = "/main/assets/maps/map0.json";
-
-        g2d = backbuffer.createGraphics();
-        g2d.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
 
         input = new Input();
         addKeyListener(input);
 
         try {
-            map = TiledLoader.loadJsonMap(mapResourcePath);
+            map = TiledLoader.loadJsonMap(MAP_RESOURCE_PATH);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to load map: " + MAP_RESOURCE_PATH, e);
+        }
 
+        if (DEBUG && map != null && map.colliders != null) {
             int solid = 0, oneWay = 0, trap = 0, goal = 0;
             for (Collider c : map.colliders) {
                 if (c.type == Collider.Type.SOLID) solid++;
@@ -72,55 +97,20 @@ public class GamePanel extends JPanel implements Runnable {
                 else if (c.type == Collider.Type.GOAL) goal++;
             }
             System.out.println("Colliders => SOLID=" + solid + " ONE_WAY=" + oneWay + " TRAP=" + trap + " GOAL=" + goal);
-
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to load map: " + e.getMessage(), e);
         }
 
-        camera = new Camera(0, 0, vw, vh, map.getPixelWidth(), map.getPixelHeight());
+        camera = new Camera(
+                0, 0,
+                vw, vh,
+                map.getPixelWidth(),
+                map.getPixelHeight()
+        );
 
         spawnPlayerTile(2, 9);
-//        spawnEnemies();
+        // spawnEnemies(); // enable if you want enemies in submission build
     }
 
-    @Override
-    protected void paintComponent(Graphics g) {
-/*        super.paintComponent(g);
-        Graphics2D g2d = (Graphics2D) g;
-
-        g2d.setRenderingHint(
-                RenderingHints.KEY_INTERPOLATION,
-                RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR
-        );
-        g2d.drawImage(backbuffer, 0, 0, getWidth(), getHeight(), null);*/
-        super.paintComponent(g);
-        if (backbuffer == null) return;
-        synchronized (renderLock) {
-            g.drawImage(backbuffer, 0, 0, getWidth(), getHeight(), null);
-        }
-    }
-
-    private void spawnEnemies() {
-        enemies.clear();
-        spawnEnemyTile(8, 7);
-        spawnEnemyTile(11, 4);
-        spawnEnemyTile(12, 10);
-        spawnEnemyTile(15, 7);
-        spawnEnemyTile(15, 7);
-        spawnEnemyTile(20, 5);
-    }
-
-    // Helper to spawn in tile coordinates.
-    private void spawnPlayerTile(int tileX, int tileY) {
-        String playerBase = "/main/assets/sprites/player/Main_Characters/Virtual_Guy/";
-        player = new Player(tileX * TILE + TILE / 2f, tileY * TILE + TILE / 2f, playerBase);
-        player.clampToWorld(map);
-    }
-
-    private void spawnEnemyTile(int tileX, int tileY) {
-        String redBase = "/main/assets/sprites/player/Red_Units/Warrior/";
-        enemies.add(new EnemyWarrior(tileX * TILE + TILE / 2f, tileY * TILE + TILE / 2f, redBase));
-    }
+    // ---- Public loop control ----
 
     public void startLoop() {
         if (loopThread != null) return;
@@ -129,10 +119,42 @@ public class GamePanel extends JPanel implements Runnable {
         loopThread.start();
     }
 
+    // Optional: call this on window close
+    public void stopLoop() {
+        running = false;
+        if (loopThread != null) {
+            try {
+                loopThread.join(500);
+            } catch (InterruptedException ignored) {
+            }
+            loopThread = null;
+        }
+    }
+
+    // ---- Swing paint ----
+
+    @Override
+    protected void paintComponent(Graphics g) {
+        super.paintComponent(g);
+        if (backbuffer == null) return;
+
+        Graphics2D g2 = (Graphics2D) g;
+        g2.setRenderingHint(
+                RenderingHints.KEY_INTERPOLATION,
+                RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR
+        );
+
+        synchronized (renderLock) {
+            g2.drawImage(backbuffer, 0, 0, getWidth(), getHeight(), null);
+        }
+    }
+
+    // ---- Game loop ----
+
     @Override
     public void run() {
-        final double targetFps = 60.0;
-        final double nsPerUpdate = 1_000_000_000.0 / targetFps;
+        final double nsPerUpdate = 1_000_000_000.0 / TARGET_FPS;
+
         long last = System.nanoTime();
         double acc = 0.0;
 
@@ -141,126 +163,193 @@ public class GamePanel extends JPanel implements Runnable {
             acc += (now - last) / nsPerUpdate;
             last = now;
 
-            while (acc >= 1.0) {
-                update(1.0 / targetFps);
+            int steps = 0;
+            while (acc >= 1.0 && steps < MAX_CATCHUP_STEPS) {
+                update(DT);
                 acc -= 1.0;
+                steps++;
             }
+
+            // Prevent spiral if we are falling behind badly
+            if (acc > 2.0) acc = 0.0;
+
             render();
-            Toolkit.getDefaultToolkit().sync(); // for smoother Linux rendering
+            Toolkit.getDefaultToolkit().sync();
+
+            // Avoid busy spin (polite CPU usage)
+            try {
+                Thread.sleep(1);
+            } catch (InterruptedException ignored) {
+            }
         }
     }
 
     private void update(double dt) {
+        if (player == null || map == null) return;
 
         if (state == GameState.WIN || state == GameState.GAME_OVER) {
             if (input.isRestart()) restart();
+            input.endFrame();
             return;
         }
 
-        float dx = 0f, speed = 120f;
+        // Movement
+        float dx = 0f;
+        final float speed = 120f; // consider moving into Player constants if it belongs there
         if (input.isLeft()) dx -= (float) (speed * dt);
         if (input.isRight()) dx += (float) (speed * dt);
 
-        // Jump
-        boolean jumpPressed = input.isJumpPressed();    // edge: false->true this frame
-        boolean jumpReleased = input.isJumpReleased();  // edge: true->false this frame
+        // Jump edges
+        boolean jumpPressed = input.isJumpPressed();
+        boolean jumpReleased = input.isJumpReleased();
         boolean downHeld = input.isDown();
 
-
+        // NOTE: If Player.tick(dt) and Player.update(..., dt) both advance time/physics,
+        // you may be effectively double-applying dt. If tick() is animations only, this is fine.
         player.tick(dt);
         player.update(map, dx, jumpPressed, jumpReleased, downHeld, (float) dt);
+
+        if (player.isDead()) state = GameState.GAME_OVER;
+        else if (player.isLevelComplete()) state = GameState.WIN;
+
 
         camera.centerOn(player.x, player.y);
 
         input.endFrame();
     }
 
+    private void render() {
+        if (backbuffer == null || map == null || camera == null || player == null) return;
+
+        synchronized (renderLock) {
+            Graphics2D g = backbuffer.createGraphics();
+            try {
+                g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+
+                // Clear
+                g.setColor(CLEAR_COLOR);
+                g.fillRect(0, 0, vw, vh);
+
+                // Map
+                map.draw(g, camera);
+
+                // Enemies (if enabled)
+                for (EnemyWarrior e : enemies) {
+                    if (!e.isRemoved()) e.draw(g, camera);
+                }
+
+                // Player
+                player.draw(g, camera);
+
+                // HUD
+                drawHUD(g);
+
+                // End screens
+                if (state == GameState.GAME_OVER) {
+                    drawCenteredOverlay(g, "GAME OVER", Color.RED);
+                } else if (state == GameState.WIN) {
+                    drawCenteredOverlay(g, "YOU WIN!", new Color(60, 220, 120));
+                }
+
+                // Debug overlays
+                if (DEBUG) {
+                    debugDrawPlayerCollider(g, camera);
+                    debugDrawColliders(g, camera);
+                }
+
+            } finally {
+                g.dispose();
+            }
+        }
+
+        repaint(); // safe from background thread; schedules EDT repaint
+    }
+
+    private void drawHUD(Graphics2D g) {
+        final int hudHeight = 28;
+        final int y = vh - hudHeight;
+
+        // Background bar
+        g.setColor(new Color(0, 0, 0, 170));
+        g.fillRect(0, y, vw, hudHeight);
+
+        // HP text
+        g.setFont(SMALL_FONT);
+        g.setColor(Color.WHITE);
+        g.drawString("HP", 8, y + 18);
+
+        // HP hearts / blocks
+        int hp = player.getHp();
+        int maxHp = Player.MAX_HP;
+
+        int barX = 36;
+        int barY = y + 8;
+        int barW = 12;
+        int barH = 12;
+        int gap = 4;
+
+        for (int i = 0; i < maxHp; i++) {
+            if (i < hp) {
+                g.setColor(new Color(220, 60, 60)); // alive
+            } else {
+                g.setColor(new Color(90, 90, 90));  // empty
+            }
+            g.fillRect(barX + i * (barW + gap), barY, barW, barH);
+        }
+    }
+
+
+    private void drawCenteredOverlay(Graphics2D g, String title, Color titleColor) {
+        g.setColor(OVERLAY_COLOR);
+        g.fillRect(0, 0, vw, vh);
+
+        g.setFont(BIG_FONT);
+        g.setColor(titleColor);
+
+        // quick centering: approximate; for perfect, use FontMetrics
+        int x = vw / 2 - (title.length() * 14); // cheap estimate
+        int y = vh / 2;
+        g.drawString(title, x, y);
+
+        g.setFont(SMALL_FONT);
+        g.setColor(Color.WHITE);
+        g.drawString("Press R to Restart", vw / 2 - 95, y + 35);
+    }
+
     private void restart() {
         state = GameState.PLAYING;
         spawnPlayerTile(4, 8);
-//        spawnEnemies();
+        // spawnEnemies();
         camera.centerOn(player.x, player.y);
     }
 
-    boolean DEBUG = false;
+    // ---- Spawning helpers ----
 
-    private void render() {
-
-        if (DEBUG) for (Collider c : map.colliders) g2d.fillRect(c.rect.x, c.rect.y, c.rect.w, c.rect.h);
-
-        synchronized (renderLock) {
-            // clear
-            g2d.setColor(new Color(24, 26, 29));
-            g2d.fillRect(0, 0, vw, vh);
-
-            // draw map (background + main layers only)
-            map.draw(g2d, camera);
-
-            // draw enemies if alive
-            for (EnemyWarrior e : enemies) {
-                if (!e.isRemoved()) e.draw(g2d, camera);
-            }
-
-            // draw player
-            player.draw(g2d, camera);
-
-            // HUD (debug)
-            g2d.setColor(Color.WHITE);
-            g2d.drawString("pos:" + (int) player.x + "," + (int) player.y, 4, 12);
-
-            if (state == GameState.GAME_OVER) {
-                g2d.setColor(new Color(0, 0, 0, 180));
-                g2d.fillRect(0, 0, vw, vh);
-
-                g2d.setColor(Color.RED);
-                g2d.setFont(new Font("Arial", Font.BOLD, 48));
-                g2d.drawString("GAME OVER", vw / 2 - 150, vh / 2);
-
-                g2d.setFont(new Font("Arial", Font.PLAIN, 18));
-                g2d.setColor(Color.WHITE);
-                g2d.drawString("Press R to Restart", vw / 2 - 95, vh / 2 + 35);
-            }
-
-            if (state == GameState.WIN) {
-                g2d.setColor(new Color(0, 0, 0, 180));
-                g2d.fillRect(0, 0, vw, vh);
-
-                g2d.setColor(new Color(60, 220, 120));
-                g2d.setFont(new Font("Arial", Font.BOLD, 48));
-                g2d.drawString("YOU WIN!", vw / 2 - 135, vh / 2);
-
-                g2d.setFont(new Font("Arial", Font.PLAIN, 18));
-                g2d.setColor(Color.WHITE);
-                g2d.drawString("Press R to Restart", vw / 2 - 95, vh / 2 + 35);
-            }
-
-            if (DEBUG) {
-                graphicDebugging();
-//                debugDrawPlayerCollider(g2d, camera);
-                debugDrawColliders(g2d, camera);
-                // If you re-enable enemies later, you can add their debug drawing here.
-            }
-        }
-        repaint();
+    private void spawnEnemies() {
+        enemies.clear();
+        spawnEnemyTile(8, 7);
+        spawnEnemyTile(11, 4);
+        spawnEnemyTile(12, 10);
+        spawnEnemyTile(15, 7);
+        spawnEnemyTile(20, 5);
     }
 
-    // ----- DEBUGGING -----
-
-    private void graphicDebugging() {
-        // Draw map colliders in translucent red
-        g2d.setColor(new Color(255, 0, 0, 100));
-        for (Collider c : map.colliders) {
-            int sx = (int) (c.rect.x - camera.x);
-            int sy = (int) (c.rect.y - camera.y);
-            g2d.fillRect(sx, sy, c.rect.w, c.rect.h);
-        }
-
-        // Draw player collision box in cyan
-        debugDrawPlayerCollider(g2d, camera);
+    private void spawnPlayerTile(int tileX, int tileY) {
+        float px = tileX * TILE_SIZE + TILE_SIZE / 2f;
+        float py = tileY * TILE_SIZE + TILE_SIZE / 2f;
+        player = new Player(px, py, PLAYER_BASE);
+        player.clampToWorld(map);
     }
+
+    private void spawnEnemyTile(int tileX, int tileY) {
+        float px = tileX * TILE_SIZE + TILE_SIZE / 2f;
+        float py = tileY * TILE_SIZE + TILE_SIZE / 2f;
+        enemies.add(new EnemyWarrior(px, py, ENEMY_BASE));
+    }
+
+    // ---- Debug drawing ----
 
     private void debugDrawPlayerCollider(Graphics2D g, Camera cam) {
-        if (player == null) return;
         Rect hb = player.getHurtbox();
         int sx = (int) (hb.x - cam.x);
         int sy = (int) (hb.y - cam.y);
@@ -269,34 +358,40 @@ public class GamePanel extends JPanel implements Runnable {
     }
 
     private void debugDrawColliders(Graphics2D g, Camera cam) {
-        if (map == null || map.colliders == null) return;
+        if (map.colliders == null) return;
 
         for (Collider c : map.colliders) {
             Rect r = c.rect;
             int sx = (int) (r.x - cam.x);
             int sy = (int) (r.y - cam.y);
 
-            if (c.type == Collider.Type.SOLID) {
-                g.setColor(new Color(255, 0, 0, 110));   // red
-                g.fillRect(sx, sy, r.w, r.h);
-                g.setColor(new Color(255, 0, 0, 200));
-                g.drawRect(sx, sy, r.w, r.h);
-            } else if (c.type == Collider.Type.ONE_WAY) {
-                g.setColor(new Color(0, 200, 255, 110)); // cyan/blue
-                g.fillRect(sx, sy, r.w, r.h);
-                g.setColor(new Color(0, 200, 255, 220));
-                g.drawRect(sx, sy, r.w, r.h);
-
-                // Optional: draw the “top line” (the only collidable part)
-                g.drawLine(sx, sy, sx + r.w, sy);
-            } else if (c.type == Collider.Type.TRAP) {
-                g.setColor(new Color(255, 255, 0, 110)); // yellow
-                g.fillRect(sx, sy, r.w, r.h);
-                g.setColor(new Color(255, 255, 0, 220));
-                g.drawRect(sx, sy, r.w, r.h);
+            switch (c.type) {
+                case SOLID -> {
+                    g.setColor(new Color(255, 0, 0, 110));
+                    g.fillRect(sx, sy, r.w, r.h);
+                    g.setColor(new Color(255, 0, 0, 200));
+                    g.drawRect(sx, sy, r.w, r.h);
+                }
+                case ONE_WAY -> {
+                    g.setColor(new Color(0, 200, 255, 110));
+                    g.fillRect(sx, sy, r.w, r.h);
+                    g.setColor(new Color(0, 200, 255, 220));
+                    g.drawRect(sx, sy, r.w, r.h);
+                    g.drawLine(sx, sy, sx + r.w, sy);
+                }
+                case TRAP -> {
+                    g.setColor(new Color(255, 255, 0, 110));
+                    g.fillRect(sx, sy, r.w, r.h);
+                    g.setColor(new Color(255, 255, 0, 220));
+                    g.drawRect(sx, sy, r.w, r.h);
+                }
+                case GOAL -> {
+                    g.setColor(new Color(60, 220, 120, 110));
+                    g.fillRect(sx, sy, r.w, r.h);
+                    g.setColor(new Color(60, 220, 120, 220));
+                    g.drawRect(sx, sy, r.w, r.h);
+                }
             }
-
         }
     }
-
 }
